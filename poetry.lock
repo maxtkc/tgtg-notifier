@@ -163,6 +163,18 @@ socks = ["PySocks (>=1.5.6,!=1.5.7)", "win-inet-pton"]
 use_chardet_on_py3 = ["chardet (>=3.0.2,<5)"]
 
 [[package]]
+name = "slack-sdk"
+version = "3.11.2"
+description = "The Slack API Platform SDK for Python"
+category = "main"
+optional = false
+python-versions = ">=3.6.0"
+
+[package.extras]
+optional = ["aiodns (>1.0)", "aiohttp (>=3.7.3,<4)", "boto3 (<=2)", "SQLAlchemy (>=1,<2)", "websockets (>=9.1,<10)", "websocket-client (>=1,<2)"]
+testing = ["pytest (>=5.4,<6)", "pytest-asyncio (<1)", "Flask-Sockets (>=0.2,<1)", "Flask (>=1,<2)", "Werkzeug (<2)", "pytest-cov (>=2,<3)", "codecov (>=2,<3)", "flake8 (>=3,<4)", "black (==21.9b0)", "psutil (>=5,<6)", "databases (>=0.3)", "boto3 (<=2)", "moto (<2)"]
+
+[[package]]
 name = "tgtg"
 version = "0.6.0"
 description = "Unoffical python client for TooGoodToGo API"
@@ -217,7 +229,7 @@ testing = ["pytest (>=4.6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytes
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7"
-content-hash = "5692d627e97de80132ff58e856903cea9909ed12f2d797029d6b909c9e60f1ff"
+content-hash = "2083414ee2c490954045cd6f32ab365e98b280170d4f2d9b04b359a4128f5891"
 
 [metadata.files]
 atomicwrites = [
@@ -275,6 +287,10 @@ pytest = [
 requests = [
     {file = "requests-2.26.0-py2.py3-none-any.whl", hash = "sha256:6c1246513ecd5ecd4528a0906f910e8f0f9c6b8ec72030dc9fd154dc1a6efd24"},
     {file = "requests-2.26.0.tar.gz", hash = "sha256:b8aa58f8cf793ffd8782d3d8cb19e66ef36f7aba4353eec859e74678b01b07a7"},
+]
+slack-sdk = [
+    {file = "slack_sdk-3.11.2-py2.py3-none-any.whl", hash = "sha256:35245ec34c8549fbb5c43ccc17101afd725b3508bb784da46530b214f496bf93"},
+    {file = "slack_sdk-3.11.2.tar.gz", hash = "sha256:131bf605894525c2d66da064677eabc19f53f02ce0f82a3f2fa130d4ec3bc1b0"},
 ]
 tgtg = [
     {file = "tgtg-0.6.0-py3-none-any.whl", hash = "sha256:558dc753ae41dfbcd5acbe46719162979510218f0b62dd74a8072874445c51d9"},
