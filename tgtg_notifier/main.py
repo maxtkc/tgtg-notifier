@@ -1,5 +1,6 @@
 #!/bin/python3
 from configparser import ConfigParser
+from slack_sdk import WebClient
 from tgtg import TgtgClient
 import json
 import os
@@ -15,9 +16,15 @@ def main():
     config = ConfigParser()
     config.read(config_file)
 
-    client = TgtgClient(
+    tgtg_client = TgtgClient(
         email=config["tgtg"]["email"], password=config["tgtg"]["password"]
     )
+
+    slack_client = None
+    if "slack" in config:
+        token = config["slack"]["token"]
+        slack_client = WebClient(token=token)
+        slack_client.conversations_join(channel=config["slack"]["channel"])
 
     # Load cache
     cache = {}
@@ -29,7 +36,7 @@ def main():
 
     while True:
         try:
-            for item in client.get_items():
+            for item in tgtg_client.get_items():
                 item_id = item["item"]["item_id"]
                 items_available = item["items_available"]
 
@@ -40,12 +47,18 @@ def main():
                         f"{store_name} - {store_branch}" if store_branch else store_name
                     )
                     print(f"notifying {combined_name} of {items_available} bags")
+                    if slack_client:
+                        slack_client.chat_postMessage(
+                            channel=config["slack"]["channel"],
+                            text=f"{combined_name} has {items_available} bags",
+                        )
+
                 cache[item_id] = items_available
                 with open(cache_file, "w") as f:
                     json.dump(cache, f)
         except Exception as e:
             print(f"Failed with {e}")
-        time.sleep(5)
+        time.sleep(15)
 
 
 if __name__ == "__main__":
