@@ -1,0 +1,6 @@
+version: '3' 
+services: 
+  tgtg: 
+    build: .
+    volumes:
+      - ./config.ini:/tgtg-notifier/config.ini:ro
