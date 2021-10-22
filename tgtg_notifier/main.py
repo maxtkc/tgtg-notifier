@@ -36,6 +36,7 @@ def main():
 
     while True:
         try:
+            new_cache = {}
             for item in tgtg_client.get_items():
                 item_id = item["item"]["item_id"]
                 items_available = item["items_available"]
@@ -46,16 +47,19 @@ def main():
                     combined_name = (
                         f"{store_name} - {store_branch}" if store_branch else store_name
                     )
-                    print(f"notifying {combined_name} of {items_available} bags")
+                    print(
+                        f"{time.time()}: notifying {combined_name} of {items_available} bags"
+                    )
                     if slack_client:
                         slack_client.chat_postMessage(
                             channel=config["slack"]["channel"],
                             text=f"{combined_name} has {items_available} bags",
                         )
 
-                cache[item_id] = items_available
-                with open(cache_file, "w") as f:
-                    json.dump(cache, f)
+                new_cache[item_id] = items_available
+            cache = new_cache
+            with open(cache_file, "w") as f:
+                json.dump(new_cache, f)
         except Exception as e:
             print(f"Failed with {e}")
         time.sleep(15)

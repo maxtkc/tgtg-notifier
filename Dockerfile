@@ -1,6 +1,5 @@
-FROM python:3.9-slim
+FROM python:3.9
 
-RUN apt update && apt install -y curl build-essential
 RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/install-poetry.py | python -
 
 COPY ./pyproject.toml ./poetry.lock /
