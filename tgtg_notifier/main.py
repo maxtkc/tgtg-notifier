@@ -5,9 +5,17 @@ from tgtg import TgtgClient
 import json
 import os
 import time
+import logging
 
+# Log info to stdout
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler()]
+)
 
 def main():
+    logging.info("Starting main")
     script_dir = os.path.dirname(os.path.realpath(__file__))
     project_dir = os.path.dirname(script_dir)
     config_file = f"{project_dir}/config.ini"
@@ -31,13 +39,17 @@ def main():
     try:
         with open(cache_file) as f:
             cache = json.load(f)
-    except FileNotFoundError:
-        print("Creating new cache")
+    except Exception:
+        logging.info("Creating new cache")
 
     while True:
         try:
             new_cache = {}
-            for item in tgtg_client.get_items():
+            new_items = tgtg_client.get_items(page_size=100, with_stock_only=True)
+            logging.info(
+                f"updating with {len(new_items)} items (cache: {len(cache.keys())})"
+            )
+            for item in new_items:
                 item_id = item["item"]["item_id"]
                 items_available = item["items_available"]
 
@@ -47,8 +59,8 @@ def main():
                     combined_name = (
                         f"{store_name} - {store_branch}" if store_branch else store_name
                     )
-                    print(
-                        f"{time.time()}: notifying {combined_name} of {items_available} bags"
+                    logging.info(
+                        f"notifying {combined_name} of {items_available} bags"
                     )
                     if slack_client:
                         slack_client.chat_postMessage(
@@ -61,7 +73,7 @@ def main():
             with open(cache_file, "w") as f:
                 json.dump(new_cache, f)
         except Exception as e:
-            print(f"Failed with {e}")
+            logging.error(f"Failed with {e}")
         time.sleep(15)
 
 

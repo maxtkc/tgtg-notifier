@@ -1,7 +1,8 @@
 version: '3' 
 services: 
   tgtg: 
+    image: tgtg:dev
     build: .
     volumes:
       - ./config.ini:/tgtg-notifier/config.ini:ro
-      - ./cache.json:/tgtg-notifier/cache.json:ro
+      - ./cache.json:/tgtg-notifier/cache.json
