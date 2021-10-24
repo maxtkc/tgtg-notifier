@@ -54,18 +54,14 @@ def main():
                 items_available = item["items_available"]
 
                 if items_available > cache.get(item_id, 0):
-                    store_name = item["store"]["store_name"]
-                    store_branch = item["store"].get("store_branch", None)
-                    combined_name = (
-                        f"{store_name} - {store_branch}" if store_branch else store_name
-                    )
+                    display_name = item["display_name"]
                     logging.info(
-                        f"notifying {combined_name} of {items_available} bags"
+                        f"notifying {display_name} of {items_available} bags"
                     )
                     if slack_client:
                         slack_client.chat_postMessage(
                             channel=config["slack"]["channel"],
-                            text=f"{combined_name} has {items_available} bags",
+                            text=f"{display_name} has {items_available} bags",
                         )
 
                 new_cache[item_id] = items_available
