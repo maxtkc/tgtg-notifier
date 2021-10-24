@@ -8,6 +8,7 @@ authors = ["Max Katz-Christy <maxkatzchristy@gmail.com>"]
 python = "^3.7"
 tgtg = "^0.6.0"
 slack-sdk = "^3.11.2"
+SQLAlchemy = "^1.4.26"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
