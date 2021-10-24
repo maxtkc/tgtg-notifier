@@ -53,7 +53,7 @@ def main():
                 item_id = item["item"]["item_id"]
                 items_available = item["items_available"]
 
-                if items_available > cache.get(item_id, 0):
+                if items_available > 0 and cache.get(item_id, 0) == 0:
                     display_name = item["display_name"]
                     logging.info(
                         f"notifying {display_name} of {items_available} bags"
