@@ -1,15 +1,19 @@
 #!/bin/python3
 
+import logging
+import os
+import time
 from configparser import ConfigParser
-from slack_sdk.web.client import WebClient
+
+import sqlalchemy
+from slack_sdk.socket_mode import SocketModeClient
+from slack_sdk.socket_mode.request import SocketModeRequest
+from slack_sdk.socket_mode.response import SocketModeResponse
+from slack_sdk.web import WebClient
 from sqlalchemy import Column, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session
 from tgtg import TgtgClient
-import logging
-import os
-import sqlalchemy
-import time
 
 # Log info to stdout
 logging.basicConfig(
@@ -43,6 +47,8 @@ class Cache(Base):
 #     user = Column(Integer, ForeignKey("user.id"))
 #     item_id = Column(Integer, nullable=False)
 
+def subscribe_to_item(session, user, item_id)
+
 
 def main():
     logging.info("Starting main")
@@ -61,11 +67,65 @@ def main():
         email=config["tgtg"]["email"], password=config["tgtg"]["password"]
     )
 
-    slack_client = None
+    web_client = None
     if "slack" in config:
-        token = config["slack"]["token"]
-        slack_client = WebClient(token=token)
-        slack_client.conversations_join(channel=config["slack"]["channel"])
+        web_token = config["slack"]["web_token"]
+        socket_token = config["slack"]["socket_token"]
+        web_client = WebClient(token=web_token)
+        web_client.conversations_join(channel=config["slack"]["channel"])
+        # Initialize SocketModeClient with an app-level token + WebClient
+        socket_client = SocketModeClient(
+            # This app-level token will be used only for establishing a connection
+            app_token=socket_token,  # xapp-A111-222-xyz
+            # You will be using this WebClient for performing Web API calls in listeners
+            web_client=web_client,  # xoxb-111-222-xyz
+        )
+
+        def process(client: SocketModeClient, req: SocketModeRequest):
+            print("HELLO", flush=True)
+            print(req, flush=True)
+            print(req.type, flush=True)
+            print(req.payload, flush=True)
+            if req.type == "slash_commands":
+                command = req.payload["command"]
+                if command == "/subscribe":
+                    response = SocketModeResponse(envelope_id=req.envelope_id)
+                    client.send_socket_mode_response(response)
+                    subscription = req.payload["text"]
+                    message = ""
+                    try:
+                        subscription = int(subscription)
+                        # TODO: Actually subscribe
+                        message = f"Subscribed to item {subscription}"
+                    except ValueError:
+                        message = "Failed to subscribe to item"
+                    web_client.chat_postEphemeral(
+                        channel=config["slack"]["channel"],
+                        user=req.payload["user_id"],
+                        text=message,
+                    )
+
+            elif req.type == "events_api":
+                # Acknowledge the request anyway
+                response = SocketModeResponse(envelope_id=req.envelope_id)
+                client.send_socket_mode_response(response)
+
+                # Add a reaction to the message if it's a new message
+                if (
+                    req.payload["event"]["type"] == "message"
+                    and req.payload["event"].get("subtype") is None
+                ):
+                    client.web_client.reactions_add(
+                        name="eyes",
+                        channel=req.payload["event"]["channel"],
+                        timestamp=req.payload["event"]["ts"],
+                    )
+
+        socket_client.socket_mode_request_listeners.append(process)
+        logging.info(socket_client.socket_mode_request_listeners)
+        logging.info("About to connect")
+        socket_client.connect()
+        logging.info("Connected")
 
     with Session(engine) as session:
         while True:
@@ -95,11 +155,11 @@ def main():
                             logging.info(
                                 f"notifying {display_name} of {items_available} bags"
                             )
-                            # if slack_client:
-                            #     slack_client.chat_postMessage(
-                            #         channel=config["slack"]["channel"],
-                            #         text=f"{display_name} has {items_available} bags",
-                            #     )
+                            if web_client:
+                                web_client.chat_postMessage(
+                                    channel=config["slack"]["channel"],
+                                    text=f"{display_name} has {items_available} bags",
+                                )
 
                         new_cache.append(Cache(item_id=item_id, n_bags=items_available))
 
