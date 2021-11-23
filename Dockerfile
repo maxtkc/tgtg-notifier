@@ -9,6 +9,8 @@ COPY ./pyproject.toml ./poetry.lock /
 
 WORKDIR /tgtg-notifier
 
+RUN apt install -y git
+
 RUN /root/.local/bin/poetry install
 
 COPY ./tgtg_notifier /tgtg-notifier/tgtg_notifier

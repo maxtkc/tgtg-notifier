@@ -27,6 +27,7 @@ def main():
     tgtg_client = TgtgClient(
         email=config["tgtg"]["email"], password=config["tgtg"]["password"]
     )
+    tgtg_client.login()
 
     slack_client = None
     if "slack" in config:
@@ -70,7 +71,7 @@ def main():
                 json.dump(new_cache, f)
         except Exception as e:
             logging.error(f"Failed with {e}")
-        time.sleep(15)
+        time.sleep(65)
 
 
 if __name__ == "__main__":

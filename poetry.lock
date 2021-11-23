@@ -176,14 +176,21 @@ testing = ["pytest (>=5.4,<6)", "pytest-asyncio (<1)", "Flask-Sockets (>=0.2,<1)
 
 [[package]]
 name = "tgtg"
-version = "0.6.0"
+version = "0.7.0"
 description = "Unoffical python client for TooGoodToGo API"
 category = "main"
 optional = false
-python-versions = ">=3.6,<4.0"
+python-versions = "^3.6"
+develop = false
 
 [package.dependencies]
 requests = "2.26.0"
+
+[package.source]
+type = "git"
+url = "https://github.com/Dielee/tgtg-python.git"
+reference = "master"
+resolved_reference = "71400a6049c0b9447cfbdeaf08684621291144bb"
 
 [[package]]
 name = "typing-extensions"
@@ -229,7 +236,7 @@ testing = ["pytest (>=4.6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytes
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7"
-content-hash = "2083414ee2c490954045cd6f32ab365e98b280170d4f2d9b04b359a4128f5891"
+content-hash = "6c9600e81277cdaaf5293d106e043e8a48a0d42b800de968934a23d343142e8a"
 
 [metadata.files]
 atomicwrites = [
@@ -292,10 +299,7 @@ slack-sdk = [
     {file = "slack_sdk-3.11.2-py2.py3-none-any.whl", hash = "sha256:35245ec34c8549fbb5c43ccc17101afd725b3508bb784da46530b214f496bf93"},
     {file = "slack_sdk-3.11.2.tar.gz", hash = "sha256:131bf605894525c2d66da064677eabc19f53f02ce0f82a3f2fa130d4ec3bc1b0"},
 ]
-tgtg = [
-    {file = "tgtg-0.6.0-py3-none-any.whl", hash = "sha256:558dc753ae41dfbcd5acbe46719162979510218f0b62dd74a8072874445c51d9"},
-    {file = "tgtg-0.6.0.tar.gz", hash = "sha256:6cb0a94b8095e0e222c552ff996cde5d21229964202e6a12fcc83e50f9559047"},
-]
+tgtg = []
 typing-extensions = [
     {file = "typing_extensions-3.10.0.2-py2-none-any.whl", hash = "sha256:d8226d10bc02a29bcc81df19a26e56a9647f8b0a6d4a83924139f4a8b01f17b7"},
     {file = "typing_extensions-3.10.0.2-py3-none-any.whl", hash = "sha256:f1d25edafde516b146ecd0613dabcc61409817af4766fbbcfb8d1ad4ec441a34"},

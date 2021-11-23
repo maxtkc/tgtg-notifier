@@ -6,8 +6,8 @@ authors = ["Max Katz-Christy <maxkatzchristy@gmail.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.7"
-tgtg = "^0.6.0"
 slack-sdk = "^3.11.2"
+tgtg = {git = "https://github.com/Dielee/tgtg-python.git"}
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
