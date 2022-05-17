@@ -37,6 +37,8 @@ def update_item(db_item, dict_item):
 
 
 def get_slack_block_item(item, subscribed=False):
+    if item.display_name == None:
+        return []
     return [
         {
             "type": "section",
