@@ -5,4 +5,4 @@ services:
     build: .
     volumes:
       - ./config.ini:/tgtg-notifier/config.ini:ro
-      - ./cache.json:/tgtg-notifier/cache.json
+      - ./state.db:/tgtg-notifier/state.db

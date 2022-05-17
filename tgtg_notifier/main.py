@@ -1,78 +1,230 @@
 #!/bin/python3
-from configparser import ConfigParser
-from slack_sdk import WebClient
-from tgtg import TgtgClient
-import json
-import os
-import time
+import asyncio
 import logging
+import os
+import re
+from configparser import ConfigParser
+
+from helpers import get_slack_blocks_items, update_item
+from models import Base, Item, Subscription, User
+from slack_bolt.adapter.socket_mode.aiohttp import AsyncSocketModeHandler
+from slack_bolt.app.async_app import AsyncApp
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from tgtg import TgtgClient
+
+engine = create_engine("sqlite:///state.db", echo=True)
+Session = sessionmaker(bind=engine)
+Base.metadata.create_all(engine)
 
 # Log info to stdout
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler()]
+    handlers=[logging.StreamHandler()],
 )
 
-def main():
-    logging.info("Starting main")
-    script_dir = os.path.dirname(os.path.realpath(__file__))
-    project_dir = os.path.dirname(script_dir)
-    config_file = f"{project_dir}/config.ini"
-    cache_file = f"{project_dir}/cache.json"
+# Read config
+script_dir = os.path.dirname(os.path.realpath(__file__))
+project_dir = os.path.dirname(script_dir)
+config_file = f"{project_dir}/config.ini"
+config = ConfigParser()
+config.read(config_file)
 
-    config = ConfigParser()
-    config.read(config_file)
+tgtg_client = TgtgClient(
+    access_token=config["tgtg"]["access_token"],
+    refresh_token=config["tgtg"]["refresh_token"],
+    user_id=config["tgtg"]["user_id"],
+)
 
-    tgtg_client = TgtgClient(
-        email=config["tgtg"]["email"], password=config["tgtg"]["password"]
+app = AsyncApp(token=config["slack"]["bot_token"])
+
+subscribe_re = re.compile(r"subscribe_([0-9]{1,8})")
+
+
+@app.action(subscribe_re)
+async def subscribe(ack, body, logger):
+    print(ack)
+    print(body)
+    for action in body["actions"]:
+        regex_match = subscribe_re.search(action["action_id"])
+        if not regex_match:
+            continue
+        item_id = int(regex_match.group(1))
+
+        tgtg_client.set_favorite(item_id=item_id, is_favorite=True)
+
+        session = Session()
+        user = (
+            session.query(User)
+            .filter(User.slack_id == body["user"]["id"])
+            .one_or_none()
+        )
+        if not user:
+            user = User(slack_id=body["user"]["id"])
+            session.add(user)
+        item = session.query(Item).filter(Item.id == item_id).one_or_none()
+        if not item:
+            item = Item(id=item_id)
+            session.add(item)
+        user.items.append(item)
+        session.commit()
+    # await say(f"Subscribed to {item_id}")
+    await ack()
+    logger.info(body)
+
+
+list_re = re.compile(r"(?i)^list( all)?$")
+
+
+@app.message(list_re)
+async def list(message, say):
+    regex_match = list_re.match(message["text"])
+    print(regex_match)
+    if not regex_match:
+        return
+    list_all = regex_match.group(1) != None
+
+    session = Session()
+    user = session.query(User).filter(User.slack_id == message["user"]).one_or_none()
+
+    subscriptions = user.items if user else []
+
+    if not list_all and subscriptions:
+        subscriptions = [item for item in subscriptions if item.quantity > 0]
+
+    await say(
+        blocks=get_slack_blocks_items(
+            subscriptions,
+            f"You are subscribed to the folowing items",
+            subscribed_all=True,
+        )
     )
-    tgtg_client.login()
 
-    slack_client = None
-    if "slack" in config:
-        token = config["slack"]["token"]
-        slack_client = WebClient(token=token)
-        slack_client.conversations_join(channel=config["slack"]["channel"])
 
-    # Load cache
-    cache = {}
-    try:
-        with open(cache_file) as f:
-            cache = json.load(f)
-    except Exception:
-        logging.info("Creating new cache")
+search_re = re.compile(r"search (.*)")
 
-    while True:
-        try:
-            new_cache = {}
-            new_items = tgtg_client.get_items(page_size=100, with_stock_only=True)
-            logging.info(
-                f"updating with {len(new_items)} items (cache: {len(cache.keys())})"
+
+@app.message(search_re)
+async def search(message, say):
+    regex_match = search_re.search(message["text"])
+    if not regex_match:
+        return
+    search_s = regex_match.group(1)
+    update = search_s == "update"
+
+    if update:
+        search_items = tgtg_client.get_items(page_size=100)
+    else:
+        search_items = tgtg_client.get_items(
+            page_size=10,
+            discover=True,
+            favorites_only=False,
+            search_phrase=search_s,
+            longitude=-71.06,
+            latitude=42.36,
+        )
+
+    # Store items to db so names are stored
+    session = Session()
+    existing = session.query(Item).filter(
+        Item.id.in_([item["item"]["item_id"] for item in search_items])
+    )
+    existing_map = {item.id: item for item in existing}
+    items = []
+    for item in search_items:
+        print(item)
+        db_item = existing_map.get(int(item["item"]["item_id"]), None)
+        if not db_item:
+            db_item = Item(id=int(item["item"]["item_id"]))
+            session.add(db_item)
+        update_item(db_item, item)
+        items.append(db_item)
+    session.commit()
+
+    if update:
+        await say(f"Updated {len(items)} items")
+        return
+
+    await say(blocks=get_slack_blocks_items(items, f"*Search results for:* {search_s}"))
+
+
+catchall_re = re.compile(r".*")
+
+
+@app.message(catchall_re)
+async def catchall(message, say):
+    await say(f"Invalid command: {message['text']}, *help* for more options")
+
+
+async def cycle():
+    new_items = tgtg_client.get_items(page_size=100, with_stock_only=True)
+    new_items = {int(item["item"]["item_id"]): item for item in new_items}
+
+    session = Session()
+    items = session.query(Item)
+    # Remove empty items
+    items.filter(Item.id.not_in(new_items.keys())).update({"quantity": 0})
+
+    notify_items = []
+
+    # Apply changes
+    relevant_items = items.filter(Item.id.in_(new_items.keys())).all()
+    relevant_items = {item.id: item for item in relevant_items}
+    logging.info(
+        f"fetched {len(new_items)} new items and {len(relevant_items)} existing items"
+    )
+    for item_id, new_item in new_items.items():
+        new_quantity = new_item["items_available"]
+        prev_quantity = 0
+        if item_id not in relevant_items.keys():
+            # New item
+            item = Item(
+                id=item_id,
+                display_name=new_item["store"]["store_name"],
+                quantity=new_quantity,
             )
-            for item in new_items:
-                item_id = item["item"]["item_id"]
-                items_available = item["items_available"]
+            session.add(item)
+        else:
+            # Existing item
+            item = session.query(Item).get(item_id)
+            prev_quantity = item.quantity
+            item.quantity = new_quantity
+        if prev_quantity == 0:
+            # Notify item
+            notify_items.append(new_item)
 
-                if items_available > 0 and cache.get(item_id, 0) == 0:
-                    display_name = item["display_name"]
-                    logging.info(
-                        f"notifying {display_name} of {items_available} bags"
-                    )
-                    if slack_client:
-                        slack_client.chat_postMessage(
-                            channel=config["slack"]["channel"],
-                            text=f"{display_name} has {items_available} bags",
-                        )
+    for item in notify_items:
+        users = (
+            session.query(User)
+            .filter(Subscription.item_id == item["item"]["item_id"])
+            .all()
+        )
+        user_ids = [user.slack_id for user in users]
 
-                new_cache[item_id] = items_available
-            cache = new_cache
-            with open(cache_file, "w") as f:
-                json.dump(new_cache, f)
-        except Exception as e:
-            logging.error(f"Failed with {e}")
-        time.sleep(65)
+        name = item["store"]["store_name"]
+        quantity = item["items_available"]
+
+        for user_id in user_ids:
+            logging.info(f"Notifying {user_id}, ({name}, {quantity})")
+            await app.client.chat_postMessage(
+                channel=user_id, user=user_id, text=f"{name} has {quantity}"
+            )
+
+    session.commit()
+
+
+async def poll_loop():
+    while True:
+        await cycle()
+        await asyncio.sleep(15)
+
+
+async def main():
+    logging.info("Starting main")
+    handler = AsyncSocketModeHandler(app, config["slack"]["app_token"])
+    await asyncio.gather(handler.start_async(), poll_loop())
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
