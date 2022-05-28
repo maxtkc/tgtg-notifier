@@ -106,7 +106,7 @@ async def list(message, say):
     )
 
 
-search_re = re.compile(r"search (.*)")
+search_re = re.compile(r"(?i)^search (.*)$")
 
 
 @app.message(search_re)
