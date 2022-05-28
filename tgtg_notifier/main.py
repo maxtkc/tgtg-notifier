@@ -31,21 +31,25 @@ config_file = f"{project_dir}/config.ini"
 config = ConfigParser()
 config.read(config_file)
 
-tgtg_client = TgtgClient(
-    access_token=config["tgtg"]["access_token"],
-    refresh_token=config["tgtg"]["refresh_token"],
-    user_id=config["tgtg"]["user_id"],
-)
-
 app = AsyncApp(token=config["slack"]["bot_token"])
+
+
+def get_tgtg_client():
+    return TgtgClient(
+        access_token=config["tgtg"]["access_token"],
+        refresh_token=config["tgtg"]["refresh_token"],
+        user_id=config["tgtg"]["user_id"],
+    )
+
+
+tgtg_client = get_tgtg_client()
+
 
 subscribe_re = re.compile(r"subscribe_([0-9]{1,8})")
 
 
 @app.action(subscribe_re)
 async def subscribe(ack, body, logger):
-    print(ack)
-    print(body)
     for action in body["actions"]:
         regex_match = subscribe_re.search(action["action_id"])
         if not regex_match:
@@ -80,7 +84,6 @@ list_re = re.compile(r"(?i)^list( all)?$")
 @app.message(list_re)
 async def list(message, say):
     regex_match = list_re.match(message["text"])
-    print(regex_match)
     if not regex_match:
         return
     list_all = regex_match.group(1) != None
@@ -133,7 +136,6 @@ async def search(message, say):
     existing_map = {item.id: item for item in existing}
     items = []
     for item in search_items:
-        print(item)
         db_item = existing_map.get(int(item["item"]["item_id"]), None)
         if not db_item:
             db_item = Item(id=int(item["item"]["item_id"]))
@@ -158,6 +160,8 @@ async def catchall(message, say):
 
 
 async def cycle():
+    # Try this at the beginning of each cycle
+    tgtg_client = get_tgtg_client()
     new_items = tgtg_client.get_items(page_size=100, with_stock_only=True)
     new_items = {int(item["item"]["item_id"]): item for item in new_items}
 
