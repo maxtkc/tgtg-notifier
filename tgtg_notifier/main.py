@@ -39,6 +39,7 @@ def get_tgtg_client():
         access_token=config["tgtg"]["access_token"],
         refresh_token=config["tgtg"]["refresh_token"],
         user_id=config["tgtg"]["user_id"],
+        user_agent="TGTG/22.2.1 Dalvik/2.1.0 (Linux; U; Android 9; SM-G955F Build/PPR1.180610.011)",
     )
 
 
