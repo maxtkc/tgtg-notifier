@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import os
+import random
 import re
 from configparser import ConfigParser
 
@@ -33,13 +34,20 @@ config.read(config_file)
 
 app = AsyncApp(token=config["slack"]["bot_token"])
 
+delay = 60
+
+
+def set_delay(t=60):
+    global delay
+    delay = t
+
 
 def get_tgtg_client():
     return TgtgClient(
         access_token=config["tgtg"]["access_token"],
         refresh_token=config["tgtg"]["refresh_token"],
         user_id=config["tgtg"]["user_id"],
-        user_agent="TGTG/22.2.1 Dalvik/2.1.0 (Linux; U; Android 9; SM-G955F Build/PPR1.180610.011)",
+        user_agent=f"TGTG/22.2.1 Dalvik/2.1.0 (Linux; U; Android 9; SM-G955F Build/PPR1.180610.{int(random.random() * 100)})",
     )
 
 
@@ -163,7 +171,19 @@ async def catchall(message, say):
 async def cycle():
     # Try this at the beginning of each cycle
     tgtg_client = get_tgtg_client()
-    new_items = tgtg_client.get_items(page_size=100, with_stock_only=True)
+    try:
+        new_items = tgtg_client.get_items(page_size=100, with_stock_only=True)
+    except Exception as e:
+        debug_user = config["slack"]["debug_user"]
+        logging.exception(f"Failed to get items, notifying {debug_user}, {e}")
+        await app.client.chat_postMessage(
+            channel=debug_user, user=debug_user, text=f"TgtgAPIError: {e}"
+        )
+        set_delay(delay * 2)
+        return
+
+    set_delay()
+
     new_items = {int(item["item"]["item_id"]): item for item in new_items}
 
     session = Session()
@@ -222,7 +242,7 @@ async def cycle():
 async def poll_loop():
     while True:
         await cycle()
-        await asyncio.sleep(15)
+        await asyncio.sleep(delay)
 
 
 async def main():
