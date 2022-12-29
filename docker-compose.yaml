@@ -6,3 +6,4 @@ services:
     volumes:
       - ./config.ini:/tgtg-notifier/config.ini:ro
       - ./state.db:/tgtg-notifier/state.db
+    restart: always
