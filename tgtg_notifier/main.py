@@ -43,11 +43,13 @@ def set_delay(t=60):
 
 
 def get_tgtg_client():
+    agent = f"TGTG/22.2.1 Dalvik/2.1.0 (Linux; U; Android 9; SM-G955F Build/PPR1.{int(random.random() * 1000)}.{int(random.random() * 1000)})"
+    logging.info(f"get_tgtg_client: New user agent: {agent}")
     return TgtgClient(
         access_token=config["tgtg"]["access_token"],
         refresh_token=config["tgtg"]["refresh_token"],
         user_id=config["tgtg"]["user_id"],
-        user_agent=f"TGTG/22.2.1 Dalvik/2.1.0 (Linux; U; Android 9; SM-G955F Build/PPR1.180610.{int(random.random() * 1000)})",
+        user_agent=agent,
     )
 
 
