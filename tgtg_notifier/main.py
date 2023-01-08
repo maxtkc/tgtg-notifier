@@ -252,6 +252,12 @@ async def catchall(message, say):
     await say(f"Invalid command: {message['text']}, *help* for more options")
 
 
+@app.event("team_join")
+def first_message(_, say):
+    text = f"Welcome to tgtg notifications, send `help` for more information"
+    say(text=text)
+
+
 async def cycle():
     # Try this at the beginning of each cycle
     tgtg_client = get_tgtg_client()
