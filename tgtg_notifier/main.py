@@ -14,6 +14,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from tgtg import TgtgClient
 
+STARTING_DELAY = 60
+
 engine = create_engine("sqlite:///state.db", echo=True)
 Session = sessionmaker(bind=engine)
 Base.metadata.create_all(engine)
@@ -34,10 +36,10 @@ config.read(config_file)
 
 app = AsyncApp(token=config["slack"]["bot_token"])
 
-delay = 60
+delay = STARTING_DELAY
 
 
-def set_delay(t=60):
+def set_delay(t=STARTING_DELAY):
     global delay
     delay = t
 
