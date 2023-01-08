@@ -74,14 +74,18 @@ def get_slack_block_item(item, subscribed=False):
     ]
 
 
-def get_slack_blocks_items(items, header_mkrdwn, subscribed_all=False):
+def get_slack_blocks_items(
+    items, header_mkrdwn, subscribed_all=False, subscribed_items=None
+):
     search_items_blocks = [
         {"type": "section", "text": {"type": "mrkdwn", "text": header_mkrdwn}},
         {"type": "divider"},
     ]
     for item in items:
         search_items_blocks.extend(
-            get_slack_block_item(item, subscribed=subscribed_all)
+            get_slack_block_item(
+                item, subscribed=subscribed_all or item in subscribed_items
+            )
         )
 
     search_items_blocks.append({"type": "divider"})

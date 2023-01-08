@@ -56,11 +56,12 @@ def get_tgtg_client():
 tgtg_client = get_tgtg_client()
 
 
-subscribe_re = re.compile(r"subscribe_([0-9]{1,8})")
+subscribe_re = re.compile(r"^subscribe_([0-9]{1,8})")
 
 
 @app.action(subscribe_re)
 async def subscribe(ack, body, logger):
+    logger.info(f"subscribe: {subscribe_re}")
     for action in body["actions"]:
         regex_match = subscribe_re.search(action["action_id"])
         if not regex_match:
@@ -89,6 +90,47 @@ async def subscribe(ack, body, logger):
     logger.info(body)
 
 
+unsubscribe_re = re.compile(r"^unsubscribe_([0-9]{1,8})")
+
+
+@app.action(unsubscribe_re)
+async def unsubscribe(ack, say, body, logger):
+    logger.info(f"unsubscribe: {unsubscribe_re}")
+    for action in body["actions"]:
+        regex_match = unsubscribe_re.search(action["action_id"])
+        if not regex_match:
+            continue
+        item_id = int(regex_match.group(1))
+
+        # tgtg_client.set_favorite(item_id=item_id, is_favorite=True)
+
+        session = Session()
+        user = (
+            session.query(User)
+            .filter(User.slack_id == body["user"]["id"])
+            .one_or_none()
+        )
+        if not user:
+            logger.info("unsubscribe: User doesn't exist... not unsubscribing")
+            break
+        subscriptions = session.query(Subscription).filter_by(
+            item_id=item_id, user_id=user.id
+        )
+        # description = "".join([str(sub) for sub in subscriptions.all()])
+        if subscriptions.first() is None:
+            logger.info("unsubscribe: Subscription doesn't exist... not unsubscribing")
+            break
+        subscriptions.delete()
+        item = session.query(Item).filter_by(id=item_id).one_or_none()
+        logger.info(
+            f"unsubscribe: {user.slack_id} unsubscribed from {item.display_name}"
+        )
+        await say(f"Unsubscribed from {item.display_name}")
+        session.commit()
+    await ack()
+    logger.info(body)
+
+
 list_re = re.compile(r"(?i)^list( all)?$")
 
 
@@ -108,11 +150,12 @@ async def list(message, say):
         subscriptions = [item for item in subscriptions if item.quantity > 0]
 
     await say(
+        text="You are subscribed to the following items...",
         blocks=get_slack_blocks_items(
             subscriptions,
-            f"You are subscribed to the folowing items",
+            f"You are subscribed to the following items",
             subscribed_all=True,
-        )
+        ),
     )
 
 
@@ -159,7 +202,44 @@ async def search(message, say):
         await say(f"Updated {len(items)} items")
         return
 
-    await say(blocks=get_slack_blocks_items(items, f"*Search results for:* {search_s}"))
+    user = session.query(User).filter(User.slack_id == message["user"]).one_or_none()
+    subscribed_items = user.items if user else []
+
+    start_text = f"*Search results for:* {search_s}"
+    await say(
+        text=f"{start_text} ...",
+        blocks=get_slack_blocks_items(
+            items, start_text, subscribed_items=subscribed_items
+        ),
+    )
+
+
+help_re = re.compile(r"(?i)^help$")
+
+
+@app.message(help_re)
+async def help(_, say):
+    await say(
+        text=f"List of available commands: ...",
+        blocks=[
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": "List of available commands:"},
+            },
+            {"type": "divider"},
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": """
+`list [all]`: List subscribed items with bags available or *all* subscribed items
+`search [string]`: Search for items matching *string*
+Tap `Subscribe` or `Unsubscribe` to get notifications from an item
+""",
+                },
+            },
+        ],
+    )
 
 
 catchall_re = re.compile(r".*")
@@ -186,26 +266,30 @@ async def cycle():
 
     set_delay()
 
+    # Key new items by item_id as integer
     new_items = {int(item["item"]["item_id"]): item for item in new_items}
 
     session = Session()
     items = session.query(Item)
-    # Remove empty items
+
+    # Set empty items to quantity 0
     items.filter(Item.id.not_in(new_items.keys())).update({"quantity": 0})
 
     notify_items = []
 
     # Apply changes
     relevant_items = items.filter(Item.id.in_(new_items.keys())).all()
+    # Key database items with item id
     relevant_items = {item.id: item for item in relevant_items}
     logging.info(
         f"fetched {len(new_items)} new items and {len(relevant_items)} existing items"
     )
+    # Loop through the new items found
     for item_id, new_item in new_items.items():
         new_quantity = new_item["items_available"]
         prev_quantity = 0
         if item_id not in relevant_items.keys():
-            # New item
+            # New item -> add to db
             item = Item(
                 id=item_id,
                 display_name=new_item["store"]["store_name"],
@@ -213,15 +297,16 @@ async def cycle():
             )
             session.add(item)
         else:
-            # Existing item
+            # Existing item -> get previous quantity and update new quantity
             item = session.query(Item).get(item_id)
             prev_quantity = item.quantity
             item.quantity = new_quantity
-        if prev_quantity == 0:
-            # Notify item
+        if prev_quantity == 0 and new_quantity > 0:
+            # Notify item if it was zero and is now nonzero
             notify_items.append(new_item)
 
     for item in notify_items:
+        # Get the users subscribed to the item
         users = (
             session.query(User)
             .filter(Subscription.item_id == item["item"]["item_id"])
