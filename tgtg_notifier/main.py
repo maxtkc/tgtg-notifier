@@ -249,11 +249,11 @@ catchall_re = re.compile(r".*")
 
 @app.message(catchall_re)
 async def catchall(message, say):
-    await say(f"Invalid command: {message['text']}, *help* for more options")
+    await say(f"Invalid command: {message['text']}, `help` for more options")
 
 
 @app.event("team_join")
-def first_message(_, say):
+async def first_message(_, say):
     text = f"Welcome to tgtg notifications, send `help` for more information"
     say(text=text)
 
@@ -315,12 +315,12 @@ async def cycle():
 
     for item in notify_items:
         # Get the users subscribed to the item
-        users = (
-            session.query(User)
+        user_query = (
+            session.query(User.slack_id)
+            .join(Subscription, User.id == Subscription.user_id)
             .filter(Subscription.item_id == item["item"]["item_id"])
-            .all()
         )
-        user_ids = [user.slack_id for user in users]
+        user_ids = session.scalars(user_query).all()
 
         name = item["store"]["store_name"]
         quantity = item["items_available"]
