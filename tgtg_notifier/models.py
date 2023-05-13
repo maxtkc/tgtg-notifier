@@ -37,3 +37,11 @@ class Subscription(Base):
     __tablename__ = "subscription"
     item_id = Column(Integer, ForeignKey("item.id"), primary_key=True)
     user_id = Column(Integer, ForeignKey("user.id"), primary_key=True)
+
+
+class Credential(Base):
+    __tablename__ = "credential"
+    access_token = Column(String, primary_key=True)
+    refresh_token = Column(String)
+    user_id = Column(String)
+    cookie = Column(String)

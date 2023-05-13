@@ -2,19 +2,19 @@
 import asyncio
 import logging
 import os
-import random
+# import random
 import re
 from configparser import ConfigParser
 
-from helpers import get_slack_blocks_items, update_item
-from models import Base, Item, Subscription, User
+from helpers import get_slack_block_item, get_slack_blocks_items, update_item
+from models import Base, Credential, Item, Subscription, User
 from slack_bolt.adapter.socket_mode.aiohttp import AsyncSocketModeHandler
 from slack_bolt.app.async_app import AsyncApp
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from tgtg import TgtgClient
 
-STARTING_DELAY = 60
+STARTING_DELAY = 15
 
 engine = create_engine("sqlite:///state.db", echo=True)
 Session = sessionmaker(bind=engine)
@@ -45,13 +45,27 @@ def set_delay(t=STARTING_DELAY):
 
 
 def get_tgtg_client():
-    agent = f"TGTG/22.2.1 Dalvik/2.1.0 (Linux; U; Android 9; SM-G955F Build/PPR1.{int(random.random() * 1000)}.{int(random.random() * 1000)})"
-    logging.info(f"get_tgtg_client: New user agent: {agent}")
+    # agent = f"TGTG/22.2.1 Dalvik/2.1.0 (Linux; U; Android 9; SM-G955F Build/PPR1.{int(random.random() * 1000)}.{int(random.random() * 1000)})"
+    # logging.info(f"get_tgtg_client: New user agent: {agent}")
+
+    session = Session()
+    credential = session.query(Credential).one_or_none()
+
+    if credential is None:
+        client = TgtgClient(email=config["tgtg"]["email"])
+        new_credential = client.get_credentials()
+        logging.info(f"new client new_credential: {new_credential}")
+
+        credential = Credential(**new_credential)
+        session.add(credential)
+        session.commit()
+    else:
+        logging.info(f"fetched client credentials from state")
     return TgtgClient(
-        access_token=config["tgtg"]["access_token"],
-        refresh_token=config["tgtg"]["refresh_token"],
-        user_id=config["tgtg"]["user_id"],
-        user_agent=agent,
+            access_token=credential.access_token,
+            refresh_token=credential.refresh_token,
+            user_id=credential.user_id,
+            cookie=credential.cookie,
     )
 
 
@@ -311,24 +325,25 @@ async def cycle():
             item.quantity = new_quantity
         if prev_quantity == 0 and new_quantity > 0:
             # Notify item if it was zero and is now nonzero
-            notify_items.append(new_item)
+            notify_items.append(item)
 
+    print(notify_items)
     for item in notify_items:
         # Get the users subscribed to the item
         user_query = (
             session.query(User.slack_id)
             .join(Subscription, User.id == Subscription.user_id)
-            .filter(Subscription.item_id == item["item"]["item_id"])
+            .filter(Subscription.item_id == item.id)
         )
         user_ids = session.scalars(user_query).all()
 
-        name = item["store"]["store_name"]
-        quantity = item["items_available"]
-
         for user_id in user_ids:
-            logging.info(f"Notifying {user_id}, ({name}, {quantity})")
+            logging.info(f"Notifying {user_id}, ({item.display_name}, {item.quantity})")
             await app.client.chat_postMessage(
-                channel=user_id, user=user_id, text=f"{name} has {quantity}"
+                text=f"{item.display_name} has {item.quantity}",
+                blocks=get_slack_block_item(item=item, subscribed=True),
+                channel=user_id,
+                user=user_id,
             )
 
     session.commit()
