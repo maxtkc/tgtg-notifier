@@ -36,12 +36,7 @@ config.read(config_file)
 
 app = AsyncApp(token=config["slack"]["bot_token"])
 
-delay = STARTING_DELAY
-
-
-def set_delay(t=STARTING_DELAY):
-    global delay
-    delay = t
+error_count = 0
 
 
 def get_tgtg_client():
@@ -51,7 +46,9 @@ def get_tgtg_client():
     session = Session()
     credential = session.query(Credential).one_or_none()
 
-    if credential is None:
+    if credential is None or error_count >= 3:
+        if credential is not None:
+            session.delete(credential)
         client = TgtgClient(email=config["tgtg"]["email"])
         new_credential = client.get_credentials()
         logging.info(f"new client new_credential: {new_credential}")
@@ -273,6 +270,7 @@ async def first_message(_, say):
 
 
 async def cycle():
+    global error_count
     # Try this at the beginning of each cycle
     tgtg_client = get_tgtg_client()
     try:
@@ -283,10 +281,10 @@ async def cycle():
         await app.client.chat_postMessage(
             channel=debug_user, user=debug_user, text=f"TgtgAPIError: {e}"
         )
-        set_delay(delay * 2)
+        error_count += 1
         return
 
-    set_delay()
+    error_count = 0
 
     # Key new items by item_id as integer
     new_items = {int(item["item"]["item_id"]): item for item in new_items}
@@ -352,7 +350,7 @@ async def cycle():
 async def poll_loop():
     while True:
         await cycle()
-        await asyncio.sleep(delay)
+        await asyncio.sleep(STARTING_DELAY * 2 ** error_count)
 
 
 async def main():
