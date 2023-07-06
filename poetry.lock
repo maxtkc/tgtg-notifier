@@ -259,7 +259,7 @@ sqlcipher = ["sqlcipher3-binary"]
 
 [[package]]
 name = "tgtg"
-version = "0.15.0"
+version = "0.16.0"
 description = "Unoffical python client for TooGoodToGo API"
 category = "main"
 optional = false
@@ -305,7 +305,7 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.10"
-content-hash = "ffe28bca38b819daedef1c1e3834e85ef04f11acae5ebf1dbe5c36c636a7eb51"
+content-hash = "c932f234adc532cd9c4e410812f73f9de2f81036bc19bef247ab771c22e30474"
 
 [metadata.files]
 aiohttp = []

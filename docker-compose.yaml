@@ -3,7 +3,11 @@ services:
   tgtg: 
     image: tgtg:dev
     build: .
+    env_file:
+      - config.env
     volumes:
-      - ./config.ini:/tgtg-notifier/config.ini:ro
-      - ./state.db:/tgtg-notifier/state.db
+      - tgtg_db:/tgtg-notifier/tgtg_db
     restart: always
+
+volumes:
+  tgtg_db:

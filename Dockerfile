@@ -4,7 +4,7 @@ RUN apt update && apt install -y curl
 # RUN apt update && apt install -y curl build-essential libffi-dev libssl-dev
 # RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 # ENV PATH="/root/.cargo/bin:${PATH}"
-RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/install-poetry.py | python -
+RUN curl -sSL https://install.python-poetry.org | python3 -
 
 # RUN apt install -y git
 

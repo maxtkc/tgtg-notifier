@@ -1,5 +1,4 @@
-state.db
-config.ini
+config.env
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

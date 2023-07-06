@@ -4,7 +4,6 @@ import logging
 import os
 # import random
 import re
-from configparser import ConfigParser
 
 from helpers import get_slack_block_item, get_slack_blocks_items, update_item
 from models import Base, Credential, Item, Subscription, User
@@ -16,7 +15,7 @@ from tgtg import TgtgClient
 
 STARTING_DELAY = 15
 
-engine = create_engine("sqlite:///state.db", echo=True)
+engine = create_engine("sqlite:////tgtg-notifier/tgtg_db/state.db", echo=True)
 Session = sessionmaker(bind=engine)
 Base.metadata.create_all(engine)
 
@@ -27,14 +26,13 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()],
 )
 
-# Read config
-script_dir = os.path.dirname(os.path.realpath(__file__))
-project_dir = os.path.dirname(script_dir)
-config_file = f"{project_dir}/config.ini"
-config = ConfigParser()
-config.read(config_file)
+# Read env variables
+email = os.environ["EMAIL"]
+app_token = os.environ["APP_TOKEN"]
+bot_token = os.environ["BOT_TOKEN"]
+debug_user = os.environ["DEBUG_USER"]
 
-app = AsyncApp(token=config["slack"]["bot_token"])
+app = AsyncApp(token=bot_token)
 
 error_count = 0
 
@@ -49,13 +47,21 @@ def get_tgtg_client():
     if credential is None or error_count >= 3:
         if credential is not None:
             session.delete(credential)
-        client = TgtgClient(email=config["tgtg"]["email"])
-        new_credential = client.get_credentials()
-        logging.info(f"new client new_credential: {new_credential}")
+        client = TgtgClient(email=email)
+        logging.info(f"Sending login email to {email}")
+        _ = app.client.chat_postMessage(
+            channel=debug_user, user=debug_user, text=f"Login requested at {email}"
+        )
+        try:
+            new_credential = client.get_credentials()
+            logging.info(f"new client new_credential: {new_credential}")
 
-        credential = Credential(**new_credential)
-        session.add(credential)
-        session.commit()
+            credential = Credential(**new_credential)
+            session.add(credential)
+            session.commit()
+
+        except Exception as e:
+            logging.exception(f"Failed to get new credentials, {e}")
     else:
         logging.info(f"fetched client credentials from state")
     return TgtgClient(
@@ -276,7 +282,6 @@ async def cycle():
     try:
         new_items = tgtg_client.get_items(page_size=100, with_stock_only=True)
     except Exception as e:
-        debug_user = config["slack"]["debug_user"]
         logging.exception(f"Failed to get items, notifying {debug_user}, {e}")
         await app.client.chat_postMessage(
             channel=debug_user, user=debug_user, text=f"TgtgAPIError: {e}"
@@ -355,7 +360,7 @@ async def poll_loop():
 
 async def main():
     logging.info("Starting main")
-    handler = AsyncSocketModeHandler(app, config["slack"]["app_token"])
+    handler = AsyncSocketModeHandler(app, app_token)
     await asyncio.gather(handler.start_async(), poll_loop())
 
 
