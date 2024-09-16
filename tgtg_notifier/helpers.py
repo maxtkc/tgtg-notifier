@@ -1,3 +1,22 @@
+SLACK_BLOCKS_EMAIL_PROMPT = [
+    {
+        "type": "actions",
+        "elements": [
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "emoji": True,
+                    "text": "Send Login Email",
+                },
+                "value": "send_login_email",
+                "action_id": "send_login_email",
+            }
+        ],
+    },
+]
+
+
 def get_price_s(minor_units: int, decimals: int):
     if not minor_units or not decimals:
         return "Unknown price"

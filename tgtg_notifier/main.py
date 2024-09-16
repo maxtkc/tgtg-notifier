@@ -2,10 +2,16 @@
 import asyncio
 import logging
 import os
+
 # import random
 import re
 
-from helpers import get_slack_block_item, get_slack_blocks_items, update_item
+from helpers import (
+    SLACK_BLOCKS_EMAIL_PROMPT,
+    get_slack_block_item,
+    get_slack_blocks_items,
+    update_item,
+)
 from models import Base, Credential, Item, Subscription, User
 from slack_bolt.adapter.socket_mode.aiohttp import AsyncSocketModeHandler
 from slack_bolt.app.async_app import AsyncApp
@@ -13,7 +19,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from tgtg import TgtgClient
 
-STARTING_DELAY = 15
+CYCLE_SLEEP_S = 15
 
 engine = create_engine("sqlite:////tgtg-notifier/tgtg_db/state.db", echo=True)
 Session = sessionmaker(bind=engine)
@@ -34,52 +40,105 @@ debug_user = os.environ["DEBUG_USER"]
 
 app = AsyncApp(token=bot_token)
 
-error_count = 0
+error_count = 3
+# On error_count % 240 === 3, (every hour) we send a message to prompt the
+# client to login
+# On error_count < 3, if there are credentials, we have regular cycles. If
+# there are no credentials, we set error_count to 3
 
 
-def get_tgtg_client():
-    # agent = f"TGTG/22.2.1 Dalvik/2.1.0 (Linux; U; Android 9; SM-G955F Build/PPR1.{int(random.random() * 1000)}.{int(random.random() * 1000)})"
-    # logging.info(f"get_tgtg_client: New user agent: {agent}")
-
+async def get_tgtg_client():
+    global error_count
     session = Session()
-    credential = session.query(Credential).one_or_none()
+    credential = session.query(Credential).first()
 
-    if credential is None or error_count >= 3:
+    # Every hour prompt the user to send themselves a login email
+    if error_count % 240 == 3:
+        logging.info(f"Sent message requesting login for {email}")
+        await app.client.chat_postMessage(
+            channel=debug_user,
+            user=debug_user,
+            blocks=SLACK_BLOCKS_EMAIL_PROMPT,
+            text="Login to tgtg required",
+        )
         if credential is not None:
             session.delete(credential)
-        client = TgtgClient(email=email)
-        logging.info(f"Sending login email to {email}")
-        _ = app.client.chat_postMessage(
-            channel=debug_user, user=debug_user, text=f"Login requested at {email}"
-        )
-        try:
-            new_credential = client.get_credentials()
-            logging.info(f"new client new_credential: {new_credential}")
-
-            credential = Credential(**new_credential)
-            session.add(credential)
             session.commit()
+            credential = None
 
-        except Exception as e:
-            logging.exception(f"Failed to get new credentials, {e}")
-    else:
-        logging.info(f"fetched client credentials from state")
+    if error_count >= 3 or credential is None:
+        return None
+
     return TgtgClient(
-            access_token=credential.access_token,
-            refresh_token=credential.refresh_token,
-            user_id=credential.user_id,
-            cookie=credential.cookie,
+        access_token=credential.access_token,
+        refresh_token=credential.refresh_token,
+        user_id=credential.user_id,
+        cookie=credential.cookie,
     )
 
 
-tgtg_client = get_tgtg_client()
+async def send_no_client_failure(ack, say, logger):
+    logger.error("No client available")
+    await say("Service not available, please try again later")
+    await ack()
+
+
+# Someday I'll get this working...
+# def get_arg_i(func, name):
+#     return inspect.getfullargspec(func).args.index(name)
+#
+# def with_client(func):
+#     def inner(*args, **kwargs):
+#         client_arg_i = get_arg_i(func, 'client')
+#         ack_arg_i = get_arg_i(func, 'ack')
+#         say = get_arg_i(func, 'ack')
+#         args_list = list(args)
+#         while client_arg_i >= len(args_list):
+#             args_list.append(None)
+#         tgtg_client = get_tgtg_client()
+#         if tgtg_client is None:
+#             return send_no_client_failure(ack, say, logger)
+#         args_list[client_arg_i] = tgtg_client
+#         return func(*args_list, **kwargs)
+#     return inner
+
+
+send_login_email_re = re.compile(r"^send_login_email")
+
+
+@app.action(send_login_email_re)
+async def send_login_email(ack, body, logger):
+    global error_count
+    logger.info("send_login_email: requested")
+    try:
+        client = TgtgClient(email=email)
+        credential = client.get_credentials()
+        logging.info(f"new client credential: {credential}")
+
+        credential = Credential(**credential)
+        session = Session()
+        session.add(credential)
+        session.commit()
+
+    except Exception as e:
+        _ = app.client.chat_postMessage(
+            channel=debug_user, user=debug_user, text=f"Login failed... {e}"
+        )
+        logging.exception(f"Failed to get new credentials, {e}")
+    await ack()
+    error_count = 0
+    logger.info(body)
 
 
 subscribe_re = re.compile(r"^subscribe_([0-9]{1,8})")
 
 
 @app.action(subscribe_re)
-async def subscribe(ack, body, logger):
+async def subscribe(ack, say, body, logger):
+    tgtg_client = await get_tgtg_client()
+    if tgtg_client is None:
+        await send_no_client_failure(ack, say, logger)
+        return
     logger.info(f"subscribe: {subscribe_re}")
     for action in body["actions"]:
         regex_match = subscribe_re.search(action["action_id"])
@@ -121,8 +180,6 @@ async def unsubscribe(ack, say, body, logger):
             continue
         item_id = int(regex_match.group(1))
 
-        # tgtg_client.set_favorite(item_id=item_id, is_favorite=True)
-
         session = Session()
         user = (
             session.query(User)
@@ -154,7 +211,7 @@ list_re = re.compile(r"(?i)^list( all)?$")
 
 
 @app.message(list_re)
-async def list(message, say):
+async def list_bags(message, say):
     regex_match = list_re.match(message["text"])
     if not regex_match:
         return
@@ -182,12 +239,17 @@ search_re = re.compile(r"(?i)^search (.*)$")
 
 
 @app.message(search_re)
-async def search(message, say):
+async def search(message, ack, say, logger):
     regex_match = search_re.search(message["text"])
     if not regex_match:
         return
     search_s = regex_match.group(1)
     update = search_s == "update"
+
+    tgtg_client = await get_tgtg_client()
+    if tgtg_client is None:
+        await send_no_client_failure(ack, say, logger)
+        return
 
     if update:
         search_items = tgtg_client.get_items(page_size=100)
@@ -278,7 +340,11 @@ async def first_message(_, say):
 async def cycle():
     global error_count
     # Try this at the beginning of each cycle
-    tgtg_client = get_tgtg_client()
+    tgtg_client = await get_tgtg_client()
+    if not tgtg_client:
+        logging.info(f"No TGTG Client, error_count: {error_count}")
+        error_count += 1
+        return
     try:
         new_items = tgtg_client.get_items(page_size=100, with_stock_only=True)
     except Exception as e:
@@ -355,7 +421,7 @@ async def cycle():
 async def poll_loop():
     while True:
         await cycle()
-        await asyncio.sleep(STARTING_DELAY * 2 ** error_count)
+        await asyncio.sleep(CYCLE_SLEEP_S)
 
 
 async def main():
